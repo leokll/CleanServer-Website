@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Clean Server - 首页</title>
+    <style>
+        /* 1. 定义本地字体 */
+        @font-face {
+            font-family: 'Minecraft';
+            src: url('minecraft.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            /* 优先使用 Minecraft 字体，中文回退到宋体以保持像素感 */
+            font-family: 'Minecraft', 'SimSun', monospace;
+            color: white;
+            user-select: none;
+        }
+
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); z-index: 1; pointer-events: none; }
+
+        .ui-container {
+            position: absolute;
+            z-index: 2;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            width: 90%;
+            max-width: 550px; /* 稍微加宽以适应大按钮 */
+        }
+
+        h1 {
+            font-size: 5rem; /* 标题也稍微加大 */
+            margin: 0 0 10px 0;
+            color: #ffffff;
+            text-shadow: 4px 4px 0px #3f3f3f;
+            font-weight: normal;
+            line-height: 1;
+        }
+
+        .subtitle { font-size: 1.5rem; color: #ffff55; margin-bottom: 20px; text-shadow: 2px 2px 0px #3f3f3f; }
+        
+        .server-info {
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #8b8b8b;
+            padding: 15px;
+            margin-bottom: 30px;
+            text-align: left;
+            box-shadow: inset 0 0 10px #000;
+        }
+
+        .info-item {
+            font-size: 1.2rem;
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+            color: #ccc;
+            border-bottom: 1px dashed #444;
+        }
+        .info-item:last-child { border-bottom: none; }
+        .info-item span:last-child { color: #fff; text-shadow: 1px 1px #000; }
+
+        /* --- 纯 CSS 复刻 MC 按钮 (加大版) --- */
+        .mc-btn {
+            display: block;
+            width: 100%;
+            height: 48px;       /* 增加高度 */
+            line-height: 44px;  /* 垂直居中 */
+            margin-bottom: 12px;
+            
+            /* 背景和边框 */
+            background-color: #7d7d7d;
+            border: 2px solid #000; /* 外黑框 */
+            box-shadow: inset 2px 2px 0px #a0a0a0, inset -2px -2px 0px #555; /* 内高光/阴影 */
+            
+            color: #fff;
+            text-decoration: none;
+            text-align: center;
+            font-size: 24px;    /* 字体加大 */
+            text-shadow: 2px 2px #222;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .mc-btn:hover {
+            background-color: #7e87b6; /* 悬停时的蓝紫色 */
+            box-shadow: inset 2px 2px 0px #aab2ff, inset -2px -2px 0px #484e75;
+            color: #ffffa0; /* 悬停文字变黄 */
+        }
+        
+        .mc-btn:active {
+            background-color: #555;
+            box-shadow: inset 2px 2px 0px #333, inset -2px -2px 0px #777;
+        }
+
+        #toast-msg {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8); color: #55ff55; padding: 15px 30px;
+            border: 2px solid #fff; display: none; z-index: 999; font-size: 1.5rem;
+            text-shadow: 1px 1px #000;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <div class="overlay"></div>
+    <div id="toast-msg">IP 已复制: 3618.org</div>
+
+    <div class="ui-container">
+        <h1>Clean Server</h1>
+        <div class="subtitle">无规则 • 纯净 • 自由</div>
+        <div id="player-count" style="color:#55ff55; margin-bottom:15px; font-size:1.2rem; text-shadow:1px 1px #000;">正在获取服务器状态...</div>
+
+        <div class="server-info">
+            <div class="info-item"><span>IP:</span><span>3618.org</span></div>
+            <div class="info-item"><span>版本:</span><span>1.8 - 1.21.11</span></div>
+            <div class="info-item"><span>核心:</span><span>Paper + BungeeCord</span></div>
+        </div>
+
+        <div class="mc-btn" onclick="copyIP()">复制服务器地址</div>
+        <a href="news.html" class="mc-btn">📜 服务器公告</a>
+        <a href="guide.html" class="mc-btn">📚 服务器指南</a>
+        <a href="https://qm.qq.com/q/XHfgzYXpq6" target="_blank" class="mc-btn">加入 QQ 群</a>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // --- 功能逻辑 ---
+        
+        // 1. 获取在线人数
+        fetch(`https://api.mcsrvstat.us/2/3618.org`)
+            .then(r => r.json())
+            .then(d => {
+                const el = document.getElementById('player-count');
+                if (d.online) {
+                    el.innerHTML = `🟢 在线: ${d.players.online} / ${d.players.max}`;
+                } else {
+                    el.innerHTML = `🔴 服务器离线`;
+                    el.style.color = '#ff5555';
+                }
+            })
+            .catch(() => {
+                document.getElementById('player-count').innerHTML = `⚪ 状态未知`;
+            });
+
+        // 2. 复制功能
+        function copyIP() {
+            navigator.clipboard.writeText("3618.org").then(() => {
+                const t = document.getElementById('toast-msg');
+                t.style.display = 'block';
+                setTimeout(() => t.style.display = 'none', 2000);
+            }).catch(() => alert("请手动复制: 3618.org"));
+        }
+
+        // 3. 3D 背景 (自动生成材质)
+        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x111111);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({antialias:false}); // 关闭抗锯齿，像素风
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+        
+        // 生成像素纹理
+        const cvs = document.createElement('canvas'); cvs.width=64; cvs.height=64; const ctx=cvs.getContext('2d');
+        ctx.fillStyle='#5d4037'; ctx.fillRect(0,0,64,64); // 泥土底色
+        for(let i=0;i<200;i++){ctx.fillStyle=Math.random()>.5?'#4e342e':'#795548';ctx.fillRect(Math.floor(Math.random()*64),Math.floor(Math.random()*64),2,2);}
+        const tex = new THREE.CanvasTexture(cvs); tex.magFilter=THREE.NearestFilter; tex.minFilter=THREE.NearestFilter;
+        
+        // 创建方块
+        const geo = new THREE.BoxGeometry(1,1,1); const mat = new THREE.MeshBasicMaterial({map:tex});
+        const cubes=[];
+        for(let i=0;i<120;i++){
+            const c=new THREE.Mesh(geo,mat);
+            c.position.set((Math.random()-.5)*60, (Math.random()-.5)*60, (Math.random()-.5)*30);
+            c.rotation.set(Math.random()*3, Math.random()*3, 0);
+            // 随机大小
+            const s = Math.random()*1.5+0.5; c.scale.set(s,s,s);
+            scene.add(c); cubes.push(c);
+        }
+        camera.position.z=12;
+
+        // 鼠标交互
+        let mx=0, my=0;
+        document.addEventListener('mousemove', e=>{mx=(e.clientX-window.innerWidth/2)/200; my=(e.clientY-window.innerHeight/2)/200;});
+        
+        function animate(){
+            requestAnimationFrame(animate);
+            camera.position.x+=(mx-camera.position.x)*0.05; camera.position.y+=(-my-camera.position.y)*0.05;
+            camera.lookAt(scene.position);
+            cubes.forEach(c=>{c.rotation.x+=0.003;c.rotation.y+=0.003;});
+            renderer.render(scene, camera);
+        }
+        animate();
+        window.onresize=()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);}
+    </script>
+</body>
+</html>
