@@ -26,13 +26,26 @@
             user-select: none;
         }
 
-        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+        /* 2. 背景容器：指定相对地址图片，并开启全屏铺满 */
+        #canvas-container { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            z-index: 0; 
+            background-image: url('background.png'); /* 这里指定你的相对路径背景图 */
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        
         .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); z-index: 1; pointer-events: none; }
 
         .ui-container {
             position: absolute;
             z-index: 2;
-            top: 50%;
+            top: 45%; /* 稍微往上提一点，给底部留出空间 */
             left: 50%;
             transform: translate(-50%, -50%);
             text-align: center;
@@ -91,6 +104,7 @@
             text-shadow: 2px 2px #222;
             cursor: pointer;
             position: relative;
+            box-sizing: border-box;
         }
 
         .mc-btn:hover {
@@ -109,6 +123,42 @@
             background: rgba(0, 0, 0, 0.8); color: #55ff55; padding: 15px 30px;
             border: 2px solid #fff; display: none; z-index: 999; font-size: 1.5rem;
             text-shadow: 1px 1px #000;
+        }
+
+        /* --- 底部信息栏样式 --- */
+        .site-footer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            border-top: 2px solid #555;
+            padding: 15px 0;
+            z-index: 2;
+            text-align: center;
+            font-size: 1rem;
+        }
+        .footer-content {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+        .footer-item span {
+            color: #aaa;
+            margin-right: 5px;
+        }
+        .footer-item a {
+            color: #ffff55;
+            text-decoration: none;
+            border-bottom: 1px dashed #ffff55;
+            padding-bottom: 2px;
+        }
+        .footer-item a:hover {
+            color: #fff;
+            border-bottom: 1px solid #fff;
+            text-shadow: 0 0 5px #ffff55;
         }
     </style>
 </head>
@@ -131,22 +181,31 @@
         <div class="mc-btn" onclick="copyIP()">复制服务器地址</div>
         <a href="news.html" class="mc-btn">📜 服务器公告</a>
         <a href="guide.html" class="mc-btn">📚 服务器指南</a>
-        <a href="https://qm.qq.com/q/XHfgzYXpq6" target="_blank" class="mc-btn">加入 QQ 群</a>
     </div>
+
+    <footer class="site-footer">
+        <div class="footer-content">
+            <div class="footer-item">
+                <span>官方交流:</span>
+                <a href="https://qm.qq.com/q/9WYl09lCc8" target="_blank">加入 QQ 群</a>
+            </div>
+            <div class="footer-item">
+                <span>友情链接:</span>
+                <a href="#" target="_blank">LuguanMC</a> 
+            </div>
+        </div>
+    </footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
         // --- 功能逻辑 ---
         
         // 1. 获取在线人数
-        // --- 新版国内优化 API (Minetools) ---
         const serverIp = "3618.org";
-        // 使用 minetools 的 ping 接口，支持 SRV 记录
         fetch(`https://api.minetools.eu/ping/${serverIp}`)
             .then(response => response.json())
             .then(data => {
                 const el = document.getElementById('player-count');
-                // Minetools 的返回结构是 data.error (如果有错) 或者 data.players.online
                 if (!data.error) {
                     el.innerHTML = `🟢 在线: ${data.players.online} / ${data.players.max}`;
                 } else {
@@ -168,45 +227,74 @@
             }).catch(() => alert("请手动复制: 3618.org"));
         }
 
-        // 3. 3D 背景 (自动生成材质)
-        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x111111);
+        // 3. 3D 背景 (自动生成草方块材质)
+        // 既然设置了背景图，我们将 WebGL 渲染器设为透明，让背景图穿透出来
+        const scene = new THREE.Scene(); 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({antialias:false}); // 关闭抗锯齿，像素风
+        const renderer = new THREE.WebGLRenderer({antialias:false, alpha:true}); // alpha:true 开启透明度
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('canvas-container').appendChild(renderer.domElement);
         
-        // 生成像素纹理
-        const cvs = document.createElement('canvas'); cvs.width=64; cvs.height=64; const ctx=cvs.getContext('2d');
-        ctx.fillStyle='#5d4037'; ctx.fillRect(0,0,64,64); // 泥土底色
-        for(let i=0;i<200;i++){ctx.fillStyle=Math.random()>.5?'#4e342e':'#795548';ctx.fillRect(Math.floor(Math.random()*64),Math.floor(Math.random()*64),2,2);}
-        const tex = new THREE.CanvasTexture(cvs); tex.magFilter=THREE.NearestFilter; tex.minFilter=THREE.NearestFilter;
+        // 动态创建草方块贴图函数
+        function createPixelTexture(type) {
+            const cvs = document.createElement('canvas'); cvs.width = 64; cvs.height = 64; const ctx = cvs.getContext('2d');
+            if (type === 'grass') {
+                // 顶部：纯草绿像素
+                ctx.fillStyle = '#5c8e32'; ctx.fillRect(0, 0, 64, 64);
+                for(let i=0; i<150; i++){ ctx.fillStyle = Math.random() > .5 ? '#4c7828' : '#6ba33b'; ctx.fillRect(Math.floor(Math.random()*64), Math.floor(Math.random()*64), 2, 2); }
+            } else if (type === 'side') {
+                // 侧面：上绿下褐（还原MC经典草方块侧面）
+                ctx.fillStyle = '#5d4037'; ctx.fillRect(0, 0, 64, 64); // 泥土底
+                for(let i=0; i<100; i++){ ctx.fillStyle = Math.random() > .5 ? '#4e342e' : '#795548'; ctx.fillRect(Math.floor(Math.random()*64), Math.floor(Math.random()*64), 2, 2); }
+                // 顶部草边
+                ctx.fillStyle = '#5c8e32'; ctx.fillRect(0, 0, 64, 16);
+                for(let i=0; i<64; i+=2) { // 锯齿状草尖
+                    let h = 14 + Math.floor(Math.random()*8);
+                    ctx.fillStyle = Math.random() > .3 ? '#5c8e32' : '#4c7828';
+                    ctx.fillRect(i, 16, 2, h-16);
+                }
+            } else {
+                // 底部：纯泥土
+                ctx.fillStyle = '#5d4037'; ctx.fillRect(0, 0, 64, 64);
+                for(let i=0; i<150; i++){ ctx.fillStyle = Math.random() > .5 ? '#4e342e' : '#795548'; ctx.fillRect(Math.floor(Math.random()*64), Math.floor(Math.random()*64), 2, 2); }
+            }
+            const tex = new THREE.CanvasTexture(cvs); tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+            return new THREE.MeshBasicMaterial({map:tex});
+        }
+
+        // 为 3D 方块定义 6 个面的材质 [右, 左, 上, 下, 前, 后]
+        const materials = [
+            createPixelTexture('side'),  // 右
+            createPixelTexture('side'),  // 左
+            createPixelTexture('grass'), // 上
+            createPixelTexture('dirt'),  // 下
+            createPixelTexture('side'),  // 前
+            createPixelTexture('side')   // 后
+        ];
         
-        // 创建方块
-        const geo = new THREE.BoxGeometry(1,1,1); const mat = new THREE.MeshBasicMaterial({map:tex});
-        const cubes=[];
-        for(let i=0;i<120;i++){
-            const c=new THREE.Mesh(geo,mat);
+        const geo = new THREE.BoxGeometry(1, 1, 1);
+        const cubes = [];
+        for(let i=0; i<120; i++){
+            const c = new THREE.Mesh(geo, materials);
             c.position.set((Math.random()-.5)*60, (Math.random()-.5)*60, (Math.random()-.5)*30);
-            c.rotation.set(Math.random()*3, Math.random()*3, 0);
-            // 随机大小
+            c.rotation.set(Math.random()*3, Math.random()*3, Math.random()*3);
             const s = Math.random()*1.5+0.5; c.scale.set(s,s,s);
             scene.add(c); cubes.push(c);
         }
-        camera.position.z=12;
+        camera.position.z = 12;
 
-        // 鼠标交互
         let mx=0, my=0;
         document.addEventListener('mousemove', e=>{mx=(e.clientX-window.innerWidth/2)/200; my=(e.clientY-window.innerHeight/2)/200;});
         
         function animate(){
             requestAnimationFrame(animate);
-            camera.position.x+=(mx-camera.position.x)*0.05; camera.position.y+=(-my-camera.position.y)*0.05;
+            camera.position.x += (mx-camera.position.x)*0.05; camera.position.y += (-my-camera.position.y)*0.05;
             camera.lookAt(scene.position);
-            cubes.forEach(c=>{c.rotation.x+=0.003;c.rotation.y+=0.003;});
+            cubes.forEach(c=>{c.rotation.x+=0.003; c.rotation.y+=0.003;});
             renderer.render(scene, camera);
         }
         animate();
-        window.onresize=()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);}
+        window.onresize=()=>{camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight);}
     </script>
 </body>
 </html>
